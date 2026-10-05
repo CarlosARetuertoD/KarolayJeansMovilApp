@@ -170,6 +170,7 @@ class SppPrinterModule : Module() {
         primary.connect()
         socket = primary
         output = primary.outputStream
+        settleAfterConnect()
         return
       } catch (first: IOException) {
         try { primary.close() } catch (_: IOException) {}
@@ -186,15 +187,47 @@ class SppPrinterModule : Module() {
         }
         socket = fallback
         output = fallback.outputStream
+        settleAfterConnect()
       }
     }
 
+    /**
+     * Escribe con ritmo (portado de Redel Kiosko v0.5.4): trozos de [WRITE_CHUNK] bytes y
+     * una pausa de [WRITE_PACE_MS] entre trozos, más una espera final ([DRAIN_MS]) antes de
+     * que el llamador cierre el socket. Un `write()` exitoso solo significa que los bytes
+     * entraron al stack Bluetooth, no que la impresora los procesó: la ADV-9010N descarta
+     * bytes en silencio si el lote (~10 KB por etiqueta) llega de golpe (perdió 16 de 16).
+     * Calibrado en esa impresora: 30 ms ⇒ 33/33, 35/35 y 35/35. Si pierde etiquetas, subir
+     * [WRITE_PACE_MS] a 40–50. La ADV-9013N no lo necesita pero tampoco le afecta.
+     */
     @Throws(IOException::class)
     fun write(bytes: ByteArray) {
       val out = output ?: throw IOException("Impresora no conectada")
-      out.write(bytes)
-      out.flush()
+      var offset = 0
+      while (offset < bytes.size) {
+        val n = minOf(WRITE_CHUNK, bytes.size - offset)
+        out.write(bytes, offset, n)
+        out.flush()
+        offset += n
+        if (offset < bytes.size) pause(WRITE_PACE_MS)
+      }
+      pause(DRAIN_MS)
     }
+
+    private fun pause(ms: Long) {
+      try {
+        Thread.sleep(ms)
+      } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+      }
+    }
+
+    /**
+     * Pausa tras el RFCOMM connect(): el UART interno de módulos como el de la ADV-9010N
+     * tarda unos cientos de ms en quedar listo aunque el socket ya reporte conectado; si se
+     * escribe de inmediato se pierden los primeros bytes (los comandos de configuración).
+     */
+    private fun settleAfterConnect() = pause(CONNECT_SETTLE_MS)
 
     fun close() {
       try { output?.flush() } catch (_: IOException) {}
@@ -208,6 +241,14 @@ class SppPrinterModule : Module() {
   companion object {
     private const val TAG = "SppPrinter"
     private const val CONNECT_TIMEOUT_MS = 8_000L
+
+    /** Espera tras connect() antes de escribir (ver Spp.settleAfterConnect). */
+    private const val CONNECT_SETTLE_MS = 300L
+
+    /** Trozo y pausa entre trozos (≈17 KB/s) y espera final antes de cerrar (ver Spp.write). */
+    private const val WRITE_CHUNK = 512
+    private const val WRITE_PACE_MS = 30L
+    private const val DRAIN_MS = 1500L
 
     /** UUID estándar de Serial Port Profile (SPP). */
     val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
