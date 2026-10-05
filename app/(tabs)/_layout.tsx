@@ -24,6 +24,11 @@ function HeaderRight() {
   );
 }
 
+// Pestañas ocultas del menú (2026-10-04, pedido de Carlos: no se usan y ocupan espacio).
+// NO se borran: la ruta y el archivo siguen existiendo. Para volver a mostrarlas, poner el flag en true.
+const MOSTRAR_VENTAS = false;
+const MOSTRAR_INGRESOS = false;
+
 export const unstable_settings = {
   initialRouteName: 'escaner',
 };
@@ -54,9 +59,10 @@ export default function TabLayout() {
       <Tabs.Screen name="traslados" options={{ title: 'Traslado', headerTitle: 'Traslado entre Almacenes',
         tabBarIcon: ({ color, focused }) => <ArrowLeftRight size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} /> }} />
       <Tabs.Screen name="ventas" options={{ title: 'Ventas', headerTitle: 'Registrar Ventas',
+        href: MOSTRAR_VENTAS ? undefined : null,
         tabBarIcon: ({ color, focused }) => <ShoppingCart size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} /> }} />
       <Tabs.Screen name="ingresos" options={{ title: 'Ingresos', headerTitle: 'Ingresos a Almacén',
-        href: isAlmacenero ? null : undefined,
+        href: MOSTRAR_INGRESOS && !isAlmacenero ? undefined : null,
         tabBarIcon: ({ color, focused }) => <PackageCheck size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} /> }} />
     </Tabs>
   );
